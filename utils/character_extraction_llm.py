@@ -30,6 +30,7 @@ from pydantic_ai.providers.openai import OpenAIProvider
 from pydantic_ai.exceptions import ModelHTTPError
 from utils.llm_utils import check_if_have_to_include_no_think_token
 from utils.file_utils import write_jsons_to_jsonl_file, empty_file, write_json_to_file
+from utils.lang_config import get_dialogue_pattern, is_chinese
 import tiktoken
 from dotenv import load_dotenv
 
@@ -134,8 +135,8 @@ class SpeakerAttributionResult(BaseModel):
 
 
 def has_dialogue(line: str) -> bool:
-    """Check if a line contains dialogue (text in quotes)."""
-    return bool(re.search(r'"[^"]+"', line))
+    """Check if a line contains dialogue (text in quotes, language-aware)."""
+    return bool(get_dialogue_pattern().search(line))
 
 
 def preprocess_text_into_lines(text: str) -> List[Dict]:
@@ -181,8 +182,8 @@ def preprocess_text_into_lines(text: str) -> List[Dict]:
         if has_dialogue(line):
             # Split into parts
             last_end = 0
-            
-            for match in re.finditer(r'"[^"]+"', line):
+
+            for match in get_dialogue_pattern().finditer(line):
                 start, end = match.span()
                 
                 # Add narrator text before this dialogue (if any)
@@ -337,6 +338,93 @@ def format_character_map_for_prompt(character_map: Dict[str, Dict]) -> str:
             f"(Age: {char_info.get('age', 'unknown')}, Gender: {char_info.get('gender', 'unknown')})"
         )
     return "\n".join(character_list) if character_list else "No characters identified yet."
+
+
+def build_zh_character_extraction_prompt(no_think_token: str, character_context: str) -> str:
+    """Chinese system prompt for Pass 1 character extraction (BOOK_LANGUAGE=zh)."""
+    return f"""{no_think_token}
+你是一位中文小说人物分析专家。你的任务是从小说文本中识别新登场的人物，或为已知人物补充新信息。
+
+重要：只提取"人物"和"会说话的类人角色"（如有名字且会说话的器灵、精怪、灵魂体）。
+不要提取地点、物品、门派/势力、功法、事件或不会说话的动物——这些都不需要配音。
+
+当前已知人物：
+{character_context}
+
+关键规则：
+
+1. **先排查是否为已知人物**——中文小说里同一个人常有多种称呼：
+   - 全名 vs 单称/昵称（"萧炎" vs "炎儿"）
+   - 姓氏+称谓（"王老师" 可能就是 "王岚"）
+   - 职务/身份称呼（"萧族长" = "萧战"）
+   - 绰号（"药老" = "药尘"）
+   - 描述性指代（"黑衣老者"可能是已知的某位老人角色）
+
+   **创建新人物前必须：**
+   - 逐一比对已知人物名单，判断当前称呼是否指向同一人
+   - 注意：同姓通常是不同人（"萧战"与"萧炎"是两个人），需结合上下文关系判断
+   - 若有 70% 以上把握是同一人，用 update 而非新建；拿不准时宁 update 勿 insert
+
+2. **操作类型**（operation 只能严格是这三个值之一，其他值会导致校验失败并重试）：
+   - "insert"：全新人物首次登场，existing_name=null
+   - "update"：同一人、同一规范名，补充新信息，existing_name=null
+   - "merge"：不同名字实为同一人，name=更完整的规范名，existing_name=要合并掉的旧名
+     注意：existing_name 必须是已知名单中真实存在的名字，且与 name 不同！同名请用 update，新人物请用 insert。
+
+   规范名优先级：全名 > 姓氏+称谓 > 职务称呼 > 绰号/昵称
+
+3. **字段校验**：
+   - age 只能是 "child"、"adult"、"elderly" 之一
+   - gender 只能是 "male"、"female"、"unknown" 之一
+   - 性别判断线索：代词（他/她）、称谓（公子/姑娘/小姐/夫人/少年/老者/前辈）、名字与描写
+   - 拿不准时使用 age="adult", gender="unknown"
+
+4. **description 质量**：用中文写 2-3 句，包含身份、与其他人物的关系、外貌/性格/功法等特征，供后续识别同一人的不同称呼。
+
+5. **reason 字段格式**（先推理再填其他字段）：
+   1. FOUND：在文中发现了什么名字/称呼？
+   2. CHECK：是否匹配某个已知人物？是哪一个？
+   3. OPERATION：insert（全新）/ update（同名补充）/ merge（旧名→新规范名）
+
+6. **什么算人物**：
+   - 提取：有名字的人、有名字且会说话的类人存在
+   - 不提取：地点（如"乌坦城"）、门派势力（如"云岚宗"）、功法物品、不会说话的兽类、无名字的泛指（"一个路人"、"众人"）
+   - 判断标准："这个角色需要配音演员吗？"不需要就不提取。
+   - 拿不准时倾向于提取，宁可多提也不要漏提。"""
+
+
+def build_zh_speaker_matching_prompt(no_think_token: str, character_context: str, exact_names_list: str) -> str:
+    """Chinese system prompt for Pass 2 speaker attribution (BOOK_LANGUAGE=zh)."""
+    return f"""{no_think_token}
+你是中文小说对话归属专家。你的唯一任务是判断给定对话是哪位已知人物说的。
+
+所有人物已在上一轮提取完毕，你只做匹配——绝不创建新人物。
+
+已知人物（完整名单，所有人都在此）：
+{character_context}
+
+关键规则：
+
+1. **必须逐字复制名字**：
+   - 返回值必须与下方有效名单中的名字一字不差
+   - 不得增加、删减或改动任何字，不得使用名单外的称呼
+
+2. **有效说话人名单（只能从中复制）**：
+{exact_names_list}
+
+3. **匹配流程**：
+   - 首先查看 context_before 中 [CURRENT LINE WITH DIALOGUE TAGS] 一行的说话提示，如"萧炎说道"、"药老抚须笑道"、"她轻声道"
+   - 将提示中的名字/称谓/代词与上方人物描述比对
+   - 利用 [speaker]: 标记追踪对话轮次，判断当前接话的人
+   - 代词线索："他/她" + 上下文最近互动的异性/同性人物 + 性别年龄信息
+   - 对话内称呼线索："老师"、"父亲"、"炎儿"等可推断说话双方身份
+
+4. **特殊情况**：
+   - 若这段"对话"实为叙述文字（引号误标）→ 返回 "narrator"
+   - 若确实无法判断 → 返回 "unknown"
+   - 绝不编造名单之外的名字
+
+5. **校验要求**：你的返回值会对照有效名单校验，不在名单中会报错重试。"""
 
 
 async def extract_character_info_from_batch(
@@ -500,6 +588,16 @@ ANTI-DUPLICATE EXAMPLES (use MERGE for these):
         
         # Create user prompt
         user_prompt = f"""Analyze this text excerpt and extract character information:
+
+<text_excerpt>
+{batch_text}
+</text_excerpt>"""
+
+        # Chinese books: switch to Chinese prompts - Chinese address forms,
+        # nicknames and pronoun gender cues differ fundamentally from English.
+        if is_chinese():
+            system_prompt = build_zh_character_extraction_prompt(no_think_token, character_context)
+            user_prompt = f"""请分析以下中文小说片段，提取其中的人物信息：
 
 <text_excerpt>
 {batch_text}

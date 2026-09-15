@@ -18,6 +18,19 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import os
 from utils.file_utils import read_json
+from utils.lang_config import is_chinese
+
+def resolve_engine_name(engine_name: str) -> str:
+    """
+    Resolve the voice-map section to use for a TTS engine.
+
+    For Chinese books (BOOK_LANGUAGE=zh) with the Kokoro engine, the dedicated
+    "kokoro_zh" section with Chinese voices (zf_*/zm_*) is used instead of the
+    English voice map. The TTS model name sent to the API is unchanged.
+    """
+    if is_chinese() and engine_name.lower() == "kokoro":
+        return "kokoro_zh"
+    return engine_name
 
 def load_voice_mappings():
     """Load the voice mappings from the JSON file."""
@@ -36,6 +49,8 @@ def get_narrator_and_dialogue_voices(engine_name: str, narrator_gender: str):
     """
     voice_mappings = load_voice_mappings()
     
+    engine_name = resolve_engine_name(engine_name)
+
     if engine_name not in voice_mappings:
         raise ValueError(f"Engine '{engine_name}' not found in voice mappings")
     
@@ -67,6 +82,8 @@ def get_voice_for_character_score(engine_name: str, narrator_gender: str, charac
     """
     voice_mappings = load_voice_mappings()
     
+    engine_name = resolve_engine_name(engine_name)
+
     if engine_name not in voice_mappings:
         raise ValueError(f"Engine '{engine_name}' not found in voice mappings")
     
@@ -100,6 +117,8 @@ def get_narrator_voice_for_character(engine_name: str, narrator_gender: str):
     """
     voice_mappings = load_voice_mappings()
     
+    engine_name = resolve_engine_name(engine_name)
+
     if engine_name not in voice_mappings:
         raise ValueError(f"Engine '{engine_name}' not found in voice mappings")
     

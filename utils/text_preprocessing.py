@@ -17,24 +17,32 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 
 import re
+from utils.lang_config import is_chinese, is_chinese_chapter_heading, ZH_SENTENCE_ENDINGS
 
 def preprocess_text_for_tts(text):
     """
     Preprocesses text to add punctuation where necessary to prevent TTS repetition issues.
-    
+
     This function:
     - Adds periods to titles and chapter headings that lack ending punctuation
     - Adds periods to lines that don't end with proper punctuation
     - Preserves existing punctuation and dialogue structure
     - Handles edge cases like abbreviations and dialogue
     - Resolves colon conflicts for Orpheus TTS voice formatting
-    
+
+    For Chinese books (BOOK_LANGUAGE=zh) a dedicated Chinese pipeline is used:
+    lines are terminated with 。, Chinese punctuation is preserved and colons
+    are NOT rewritten.
+
     Args:
         text (str): The input text to preprocess
-        
+
     Returns:
         str: The preprocessed text with proper punctuation
     """
+    if is_chinese():
+        return _preprocess_chinese_text_for_tts(text)
+
     lines = text.split('\n')
     processed_lines = []
     
@@ -87,6 +95,47 @@ def preprocess_text_for_tts(text):
         # Default: add a period if the line doesn't end with punctuation
         processed_lines.append(line + '.')
     
+    return '\n'.join(processed_lines)
+
+
+def _preprocess_chinese_text_for_tts(text):
+    """
+    Chinese-aware preprocessing for TTS (BOOK_LANGUAGE=zh).
+
+    - Chapter headings (第一章 …) get a terminating 。 so the TTS pauses
+    - Lines already ending with sentence punctuation are kept as-is
+    - Lines ending with ，/ 、/ —— are kept (sentence continues)
+    - Everything else is terminated with 。
+    - Chinese punctuation (：——……、) is never rewritten
+    """
+    lines = text.split('\n')
+    processed_lines = []
+
+    for line in lines:
+        line = line.strip()
+
+        if not line:
+            processed_lines.append(line)
+            continue
+
+        # Chapter heading: make sure it ends with 。 for a clean pause
+        if is_chinese_chapter_heading(line):
+            processed_lines.append(line if line.endswith(ZH_SENTENCE_ENDINGS) else line + '。')
+            continue
+
+        # Already ends with sentence-ending punctuation (incl. closing quotes)
+        if line.endswith(ZH_SENTENCE_ENDINGS):
+            processed_lines.append(line)
+            continue
+
+        # Ends with continuation punctuation - the sentence carries on
+        if line.endswith(('，', '、', '—')):
+            processed_lines.append(line)
+            continue
+
+        # Default: terminate with 。
+        processed_lines.append(line + '。')
+
     return '\n'.join(processed_lines)
 
 

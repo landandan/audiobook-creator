@@ -31,6 +31,38 @@
             "10": "af_bella"
         }
     },
+    "kokoro_zh": {
+        "male_narrator": "zm_yunjian",
+        "male_dialogue": "zm_yunxi",
+        "female_narrator": "zf_xiaoxiao",
+        "female_dialogue": "zf_xiaobei",
+        "male_score_map": {
+            "0": "zm_yunjian",
+            "1": "zm_yunyang",
+            "2": "zm_yunyang",
+            "3": "zm_yunjian",
+            "4": "zm_yunxi+zf_xiaoni",
+            "5": "zf_xiaoyi+zm_yunxi",
+            "6": "zf_xiaoni",
+            "7": "zf_xiaoyi",
+            "8": "zf_xiaoxiao+zf_xiaobei",
+            "9": "zf_xiaobei",
+            "10": "zf_xiaoni"
+        },
+        "female_score_map": {
+            "0": "zf_xiaoxiao",
+            "1": "zm_yunyang",
+            "2": "zm_yunjian",
+            "3": "zm_yunxi",
+            "4": "zm_yunxia+zf_xiaoni",
+            "5": "zf_xiaoyi+zm_yunxi",
+            "6": "zf_xiaoni",
+            "7": "zf_xiaoyi",
+            "8": "zf_xiaoxiao+zf_xiaobei",
+            "9": "zf_xiaobei",
+            "10": "zf_xiaoni"
+        }
+    },
     "orpheus": {
         "male_narrator": "zac",
         "male_dialogue": "dan",

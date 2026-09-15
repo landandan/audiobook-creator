@@ -23,6 +23,7 @@ import sys
 import traceback
 import shlex
 import re
+from utils.lang_config import CJK_RANGE
 
 def check_if_calibre_is_installed():
     """
@@ -70,11 +71,12 @@ def validate_file_path_allowlist(file_path):
     
     # Allowlist pattern for safe file paths
     # Allows: letters, numbers, spaces, hyphens, underscores, dots, forward slashes, commas
+    # and CJK characters (Chinese book titles / chapter audio filenames)
     # Specifically excludes shell metacharacters and command injection patterns
-    safe_path_pattern = r"^[a-zA-Z0-9\s\-_.:/'\\,]+\.[a-zA-Z0-9]{1,10}$|^[a-zA-Z0-9\s\-_.:/'\\,]+/$"
-    
+    safe_path_pattern = rf"^[a-zA-Z0-9\s\-_.:/'\\,{CJK_RANGE}]+\.[a-zA-Z0-9]{{1,10}}$|^[a-zA-Z0-9\s\-_.:/'\\,{CJK_RANGE}]+/$"
+
     # Additional check for relative path traversal
-    safe_relative_pattern = r"^(?!.*\.\.)[a-zA-Z0-9\s\-_.:/'\\,]+$"
+    safe_relative_pattern = rf"^(?!.*\.\.)[a-zA-Z0-9\s\-_.:/'\\,{CJK_RANGE}]+$"
     
     return (re.match(safe_path_pattern, file_path) is not None and 
             re.match(safe_relative_pattern, file_path) is not None)

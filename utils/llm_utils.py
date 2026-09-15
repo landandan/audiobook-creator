@@ -28,6 +28,7 @@ import re
 load_dotenv()
 
 NO_THINK_MODE = os.environ.get("NO_THINK_MODE", "true")
+BOOK_LANGUAGE = os.environ.get("BOOK_LANGUAGE", "en").strip().lower()
 
 # Retry configuration
 MAX_RETRIES = 3
@@ -102,12 +103,18 @@ async def generate_audio_with_retry(client: AsyncOpenAI, tts_model: str, text_to
         Exception: If all retry attempts fail
     """
     last_exception = None
-    
+
+    # Kokoro TTS needs an explicit lang_code for non-English synthesis.
+    # "z" selects Mandarin Chinese in Kokoro-FastAPI.
+    extra_request_args = {}
+    if BOOK_LANGUAGE in ("zh", "zh-cn", "zh-tw", "chinese", "cn") and tts_model.lower() == "kokoro":
+        extra_request_args["extra_body"] = {"lang_code": "z"}
+
     for attempt in range(max_retries + 1):
         try:
             # Create an in-memory buffer for the audio data
             audio_buffer = bytearray()
-            
+
             # Generate audio for the part
             async with client.audio.speech.with_streaming_response.create(
                 model=tts_model,
@@ -115,7 +122,8 @@ async def generate_audio_with_retry(client: AsyncOpenAI, tts_model: str, text_to
                 response_format="wav",
                 speed=0.85,
                 input=text_to_speak,
-                timeout=600
+                timeout=600,
+                **extra_request_args
             ) as response:
                 async for chunk in response.iter_bytes():
                     audio_buffer.extend(chunk)

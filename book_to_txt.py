@@ -26,6 +26,7 @@ import shlex
 import os
 import subprocess
 from utils.run_shell_commands import check_if_calibre_is_installed, run_shell_command_secure, validate_file_path_allowlist
+from utils.lang_config import is_chinese, normalize_chinese_quotes, get_default_content_markers, get_chapter_marker_words
 
 def validate_book_path(book_path):
     """
@@ -100,6 +101,43 @@ def extract_text_from_book_using_calibre(book_path):
 
     return book_text
 
+def fix_unterminated_quotes_chinese(text: str):
+    """
+    Balance Chinese curly quotes “…” line by line.
+
+    Chinese novels sometimes drop the closing quote at line ends (or the
+    opening quote after a line break). If a line has an odd number of opening
+    vs closing quotes we append/prepend the missing one. Nothing else is
+    modified - Chinese punctuation (——, ……, 、) is left untouched.
+    """
+    if not text:
+        return text
+
+    fixed_lines = []
+    for line in text.splitlines():
+        if not line.strip():
+            continue
+
+        open_count = line.count('“')
+        close_count = line.count('”')
+
+        if open_count == close_count:
+            fixed_lines.append(line)
+            continue
+
+        print("Fixing unterminated Chinese quotes for line: ", line)
+        if open_count > close_count:
+            # Missing closing quotes -> append at the end of the line
+            line = line + '”' * (open_count - close_count)
+        else:
+            # Missing opening quotes -> prepend at the start of the line
+            line = '“' * (close_count - open_count) + line
+
+        fixed_lines.append(line)
+
+    return "\n".join(fixed_lines)
+
+
 def fix_unterminated_quotes(text: str):
     if not text:
         return text
@@ -166,24 +204,30 @@ def fix_unterminated_quotes(text: str):
     result_text = "\n".join(fixed_lines)
     return result_text
 
-def extract_main_content(text, start_marker="PROLOGUE", end_marker="ABOUT THE AUTHOR"):
+def extract_main_content(text, start_marker=None, end_marker=None):
     """
     Extracts the main content of a book between two markers (case-insensitive).
     Handles edge cases such as multiple marker occurrences and proper content boundaries.
-    
+
     Args:
         text (str): The full text of the book.
         start_marker (str): The marker indicating the start of the main content.
         end_marker (str): The marker indicating the end of the main content.
-    
+
     Returns:
         str: The extracted main content.
-        
+
     Raises:
         ValueError: If markers are not found or if their positions are invalid.
     """
-    
+
     try:
+        default_start, default_end = get_default_content_markers()
+        if not start_marker:
+            start_marker = default_start
+        if not end_marker:
+            end_marker = default_end
+
         if not text or not isinstance(text, str):
             raise ValueError("Input text must be a non-empty string")
 
@@ -233,14 +277,15 @@ def extract_main_content(text, start_marker="PROLOGUE", end_marker="ABOUT THE AU
             raise ValueError("Extracted content is suspiciously short")
             
         # Remove any leading/trailing chapter markers or section headers
+        marker_words = [start_marker, end_marker] + get_chapter_marker_words()
         lines = main_content.split('\n')
         while lines and (
-            any(marker.lower() in lines[0].lower() 
-                for marker in [start_marker, end_marker, 'chapter', 'part', 'book'])):
+            any(marker.lower() in lines[0].lower()
+                for marker in marker_words)):
             lines.pop(0)
         while lines and (
-            any(marker.lower() in lines[-1].lower() 
-                for marker in [start_marker, end_marker, 'chapter', 'part', 'book'])):
+            any(marker.lower() in lines[-1].lower()
+                for marker in marker_words)):
             lines.pop()
             
         return '\n'.join(lines).strip()
@@ -280,18 +325,27 @@ def process_book_and_extract_text(
     else:
         text: str = extract_text_from_book_using_textract(book_path)
 
-    # Replace various Unicode characters with ASCII equivalents
-    text = (text.replace("\u201c", '"')
-                .replace("\u201d", '"')
-                .replace("\u2019", "'")
-                .replace("\u2018", "'")
-                .replace("\u2014", "-")
-                .replace("\u2013", "-")
-                .replace("\u2026", "...")
-        )
+    if is_chinese():
+        # Chinese books: keep Chinese punctuation intact (em-dash, ellipsis,
+        # dunhao and curly quotes). Only normalize the corner-bracket quote
+        # variants to the standard curly quotes so downstream dialogue
+        # splitting has a single quote style to handle.
+        text = normalize_chinese_quotes(text)
+        text = normalize_line_breaks(text)
+        text = fix_unterminated_quotes_chinese(text)
+    else:
+        # Replace various Unicode characters with ASCII equivalents
+        text = (text.replace("\u201c", '"')
+                    .replace("\u201d", '"')
+                    .replace("\u2019", "'")
+                    .replace("\u2018", "'")
+                    .replace("\u2014", "-")
+                    .replace("\u2013", "-")
+                    .replace("\u2026", "...")
+            )
 
-    text = normalize_line_breaks(text)
-    text = fix_unterminated_quotes(text)
+        text = normalize_line_breaks(text)
+        text = fix_unterminated_quotes(text)
 
     with open("converted_book.txt", 'w', encoding='utf-8') as fout:
         fout.write(text)
@@ -357,12 +411,13 @@ def main():
     ).strip().lower()
 
     if have_to_extract_main_content == "yes":
-        start_marker = input("🔹 Enter the **start marker** for the main content (case-sensitive): Default is **PROLOGUE** :").strip()
+        default_start_marker, default_end_marker = get_default_content_markers()
+        start_marker = input(f"🔹 Enter the **start marker** for the main content (case-sensitive): Default is **{default_start_marker}** :").strip()
         if(not start_marker):
-            start_marker = "PROLOGUE"
-        end_marker = input("🔹 Enter the **end marker** for the main content (case-sensitive): Default is **ABOUT THE AUTHOR** :").strip()
+            start_marker = default_start_marker
+        end_marker = input(f"🔹 Enter the **end marker** for the main content (case-sensitive): Default is **{default_end_marker}** :").strip()
         if(not end_marker):
-            end_marker = "ABOUT THE AUTHOR"
+            end_marker = default_end_marker
         text = extract_main_content(text, start_marker=start_marker, end_marker=end_marker)
         print("✅ Main content has been extracted!\n")
 

@@ -35,6 +35,7 @@ from utils.check_if_audio_generator_api_is_up import check_if_audio_generator_ap
 from utils.voice_mapping import get_narrator_and_dialogue_voices, get_voice_for_character_score, get_narrator_voice_for_character
 from utils.text_preprocessing import preprocess_text_for_tts
 from utils.llm_utils import generate_audio_with_retry
+from utils.lang_config import get_dialogue_pattern, is_chinese, is_chinese_chapter_heading, sanitize_filename_language_aware, ZH_PUNCTUATION
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -56,15 +57,21 @@ def sanitize_filename(text):
     text = text.replace("'", '').replace('"', '').replace('/', ' ').replace('.', ' ')
     text = text.replace(':', '').replace('?', '').replace('\\', '').replace('|', '')
     text = text.replace('*', '').replace('<', '').replace('>', '').replace('&', 'and')
-    
+
+    if is_chinese():
+        # Keep CJK characters for Chinese chapter titles - otherwise every
+        # chapter filename would collapse to blank and chapters would
+        # overwrite each other.
+        return sanitize_filename_language_aware(text)
+
     # cleanup file name based on pattern in run_shell_command_secure
     # ^[a-zA-Z0-9\-_./]+$
     regex = r"[^a-zA-Z0-9\-_./\s]"
-    text = re.sub(regex, ' ', text, 0, re.MULTILINE) 
-    
+    text = re.sub(regex, ' ', text, 0, re.MULTILINE)
+
     # Normalize whitespace and trim
     text = ' '.join(text.split())
-    
+
     return text
 
 def is_only_punctuation(text):
@@ -89,7 +96,11 @@ def is_only_punctuation(text):
     import string
     
     # Extended punctuation set including common Unicode punctuation in books
-    extended_punctuation = string.punctuation + '—–""''…‚„‹›«»‰‱'
+    extended_punctuation = string.punctuation + '—–“”‘’…‚„‹›«»‰‱'
+
+    # Chinese full-width punctuation (Chinese books)
+    if is_chinese():
+        extended_punctuation += ZH_PUNCTUATION
     
     # Remove all punctuation marks (both ASCII and extended Unicode)
     text_without_punct = ''.join(char for char in cleaned_text if char not in extended_punctuation)
@@ -99,29 +110,45 @@ def is_only_punctuation(text):
 
 def split_and_annotate_text(text):
     """Splits text into dialogue and narration while annotating each segment."""
-    parts = re.split(r'("[^"]+")', text)  # Keep dialogues in the split result
+    dialogue_pattern = get_dialogue_pattern()
+    parts = re.split(r'(' + dialogue_pattern.pattern + r')', text)  # Keep dialogues in the split result
     annotated_parts = []
 
     for part in parts:
         if part:  # Ignore empty strings
             annotated_parts.append({
                 "text": part,
-                "type": "dialogue" if part.startswith('"') and part.endswith('"') else "narration"
+                "type": "dialogue" if dialogue_pattern.fullmatch(part) else "narration"
             })
 
     return annotated_parts
+
+def strip_quotes_for_tts(text):
+    """Strip quote characters before sending text to the TTS engine."""
+    text = text.replace('"', '').replace('\\', '')
+    if is_chinese():
+        for quote_char in '“”「」『』':
+            text = text.replace(quote_char, '')
+    return text
 
 def check_if_chapter_heading(text):
     """
     Checks if a given text line represents a chapter heading.
 
-    A chapter heading is considered a string that starts with either "Chapter",
-    "Part", or "PART" (case-insensitive) followed by a number (either a digit
-    or a word that can be converted to an integer).
+    For English books: a string that starts with "Chapter", "Part", or "PART"
+    (case-insensitive) followed by a number (either a digit or a word that can
+    be converted to an integer).
+
+    For Chinese books (BOOK_LANGUAGE=zh): 第X章 / 第X回 / 第X卷 / 第X部 / 第X节
+    with either Arabic or Chinese numerals (第一章, 第十二回, 第三百章 ...),
+    plus short standalone markers like 楔子 / 序章 / 尾声 / 番外.
 
     :param text: The text to check
     :return: True if the text is a chapter heading, False otherwise
     """
+    if is_chinese():
+        return is_chinese_chapter_heading(text)
+
     pattern = r'^(Chapter|Part|PART)\s+([\w-]+|\d+)'
     regex = re.compile(pattern, re.IGNORECASE)
     match = regex.match(text)
@@ -677,8 +704,8 @@ async def generate_audio_with_multiple_voices(output_format, narrator_gender, ge
 
                 voice_to_speak_in = narrator_voice if part["type"] == "narration" else speaker_voice
 
-                # strip all double quotes and backslashes from the text to speak
-                text_to_speak = text_to_speak.replace('"', '').replace('\\', '')
+                # strip all quote characters and backslashes from the text to speak
+                text_to_speak = strip_quotes_for_tts(text_to_speak)
                 
                 # Create temporary file for this part
                 temp_file = tempfile.NamedTemporaryFile(suffix='.wav', delete=False)

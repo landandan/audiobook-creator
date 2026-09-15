@@ -264,6 +264,36 @@ Choose the value of **TTS_MAX_PARALLEL_REQUESTS_BATCH_SIZE** based on your avail
 
 </details>
 
+## 中文小说使用指南 (Chinese Novel Support)
+
+<details>
+<summary>展开 / Expand</summary>
+
+本项目支持中文小说转有声书。在 `.env` 中设置：
+
+```bash
+BOOK_LANGUAGE=zh
+```
+
+设置后以下环节自动切换为中文模式（英文书行为完全不变，默认 `en`）：
+
+| 环节 | 中文模式行为 |
+|---|---|
+| 文本清洗 | 保留中文标点（`——`、`……`、`、`、`“”`），将 `「…」`/`『…』` 统一归一为 `“…”`，按行配平未闭合的中文引号 |
+| 对话切分 | 按中文弯引号 `“…”` 识别对话（兼容 `「」『』` 和英文直引号） |
+| 角色识别 | LLM 提示词切换为中文，内置中文称呼合并规则（全名 > 姓氏+称谓 > 职务称呼 > 昵称，如“萧炎/萧族长/炎儿”），利用“他/她”与称谓推断性别 |
+| 章节检测 | 识别 `第X章` / `第X回` / `第X卷` / `第X部`（支持中文数字如“第三百零五章”）及 `楔子` / `序章` / `尾声` / `番外` |
+| 章节文件名 | 保留中文字符，避免章节音频互相覆盖 |
+| TTS 语音 | Kokoro 自动切换中文音色表（`zf_xiaoxiao` / `zf_xiaobei` / `zm_yunjian` / `zm_yunxi` 等），请求自动带 `lang_code=z` |
+
+**推荐配置**：
+
+- **TTS 引擎**：中文书请使用 **Kokoro**（`TTS_MODEL=kokoro`）。Orpheus 仅支持英文，情绪标签功能（`<laugh>` 等）对中文不可用。
+- **角色识别 LLM**：推荐 Qwen3 30B A3B Instruct（非思考模式），对中文人名和称呼的识别效果好。
+- **多音色模式**：中文音色按性别分数自动映射；男声旁白用 `zm_yunjian`，女声旁白用 `zf_xiaoxiao`，可在 `static_files/voice_map.json` 的 `kokoro_zh` 节中自定义。
+
+</details>
+
 ## Roadmap
 
 Planned future enhancements:
