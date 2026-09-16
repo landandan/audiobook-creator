@@ -204,15 +204,44 @@ docker run \
 
 > 使用 Docker Desktop 时，需要在设置中开启 host networking。详情参见 [Docker host 网络说明](https://docs.docker.com/engine/network/drivers/host/)。
 
-#### 方式二：Docker Compose
+#### 方式二：Docker Compose 本地构建
+
+仓库中的 `docker-compose.yaml` 使用 `build.context: .` 和本地
+`Dockerfile` 构建应用镜像，不会拉取预构建的 Audiobook Creator 镜像。
+先完成 `.env` 配置，并确保 LLM 与 TTS 服务已经启动：
 
 ```bash
 git clone https://github.com/prakharsr/audiobook-creator.git
 cd audiobook-creator
-docker compose --env-file .env up --build
+
+# 使用当前目录的 Dockerfile 构建本地镜像
+docker compose --env-file .env build
+
+# 启动服务
+docker compose --env-file .env up
 ```
 
 访问 <http://localhost:7860>。
+
+也可以使用一条命令完成本地构建并在后台启动：
+
+```bash
+docker compose --env-file .env up --build -d
+```
+
+代码或依赖发生变化后，可强制重新构建：
+
+```bash
+docker compose --env-file .env build --no-cache
+docker compose --env-file .env up -d
+```
+
+查看日志或停止服务：
+
+```bash
+docker compose logs -f audiobook_creator
+docker compose down
+```
 
 #### 方式三：使用 uv 直接运行
 
