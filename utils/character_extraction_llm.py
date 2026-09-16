@@ -925,6 +925,28 @@ You MUST copy the name EXACTLY character-by-character from the valid list."""
 </context_after>
 
 CRITICAL: Return the EXACT canonical name from the valid names list in the system prompt. Copy it character-by-character without modification."""
+
+        if is_chinese():
+            system_prompt = build_zh_speaker_matching_prompt(
+                no_think_token,
+                character_context,
+                exact_names_list,
+            )
+            user_prompt = f"""请将以下对话匹配到一个已知人物：
+
+<context_before>
+{context_before}
+</context_before>
+
+<dialogue_line>
+{dialogue_line}
+</dialogue_line>
+
+<context_after>
+{context_after}
+</context_after>
+
+重要：speaker 必须从系统提示词的有效说话人名单中逐字复制，不得改写或创建新名字。"""
         
         # Create dynamic Enum for speaker validation based on character_map
         # This creates a Pydantic enum that only accepts valid speaker names

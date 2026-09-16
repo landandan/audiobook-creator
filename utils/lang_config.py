@@ -95,6 +95,20 @@ ZH_CHAPTER_HEADING_PATTERN = re.compile(
 # books (headings are short standalone lines, e.g. "第一章 陨落的天才").
 ZH_CHAPTER_HEADING_MAX_LEN = 40
 
+# Compact web-novel headings are often written without a separator, for
+# example "第一章陨落的天才". Keep supporting that convention while rejecting
+# short prose sentences such as "第一章的内容很长".
+ZH_COMPACT_CHAPTER_TITLE_MAX_LEN = 12
+ZH_CHAPTER_TITLE_SEPARATORS = ':：、.-—_（(【['
+ZH_PROSE_CONTINUATION_PREFIXES = (
+    '的', '是', '中', '里', '内', '讲', '写', '说',
+    '他', '她', '它', '我', '你', '这', '那', '其', '本',
+    '将', '把', '被', '让', '与', '和', '却', '也', '就',
+    '都', '还', '又', '并', '而', '但', '从', '在', '对',
+    '向', '给', '由', '为', '以', '于', '如', '当', '若',
+    '因', '虽',
+)
+
 _ZH_DIGITS = {'零': 0, '〇': 0, '一': 1, '二': 2, '两': 2, '三': 3, '四': 4,
               '五': 5, '六': 6, '七': 7, '八': 8, '九': 9}
 _ZH_UNITS = {'十': 10, '百': 100, '千': 1000, '万': 10000}
@@ -156,14 +170,20 @@ def is_chinese_chapter_heading(text: str) -> bool:
     if chinese_numeral_to_int(numeral) is None:
         return False
 
-    # Trailing text after the 第X章 token is a chapter title only when it is
-    # separated by whitespace ("第一章 陨落的天才") or the whole line is very
-    # short ("第一章重逢"). This rejects prose like "第一章的内容很长……".
+    # Prefer an explicit title separator. Compact headings without a separator
+    # are supported only when short and when the remainder does not begin like
+    # a prose continuation ("第一章的内容...", "第十二章他终于...").
     remainder = line[match.end():]
-    if remainder and not remainder[0].isspace() and len(line) > 12:
+    if not remainder:
+        return True
+    if remainder[0].isspace() or remainder[0] in ZH_CHAPTER_TITLE_SEPARATORS:
+        return True
+    if remainder.startswith(ZH_PROSE_CONTINUATION_PREFIXES):
+        return False
+    if any(ch in remainder for ch in '。！？；'):
         return False
 
-    return True
+    return len(line) <= ZH_COMPACT_CHAPTER_TITLE_MAX_LEN
 
 
 # ---------------------------------------------------------------------------

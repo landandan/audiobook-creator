@@ -104,10 +104,12 @@ def validate_command_arguments_allowlist(args):
             
         # Allow safe argument patterns:
         safe_arg_patterns = [
-            # File paths and extensions (no '..')
-            r"^(?!.*\.\.)[a-zA-Z0-9\s\-_.:/'\\,]+\.[a-zA-Z0-9]{1,10}$",
+            # File paths and extensions (no '..'). Keep this in sync with
+            # validate_file_path_allowlist so Chinese chapter names survive
+            # the final command-level validation before FFmpeg/Calibre runs.
+            rf"^(?!.*\.\.)[a-zA-Z0-9\s\-_.:/'\\,{CJK_RANGE}]+\.[a-zA-Z0-9]{{1,10}}$",
             # Directory paths (no '..')
-            r"^(?!.*\.\.)[a-zA-Z0-9\s\-_.:/'\\,]+/?$",
+            rf"^(?!.*\.\.)[a-zA-Z0-9\s\-_.:/'\\,{CJK_RANGE}]+/?$",
             # Command flags like -y, --verbose, -map_metadata
             r'^-{1,2}[a-zA-Z0-9\-_:]+$',
             # Numbers with optional size suffixes and standalone numbers
