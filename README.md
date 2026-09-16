@@ -1,5 +1,7 @@
 # Audiobook Creator
 
+[English](README.md) | [简体中文](README.zh-CN.md)
+
 ## Overview
 
 Audiobook Creator is an open-source project designed to convert books in various text formats (e.g., EPUB, PDF, etc.) into fully voiced audiobooks with intelligent character voice attribution. It leverages modern Large Language Models (LLMs), and Text-to-Speech (TTS) technologies to create an engaging and dynamic audiobook experience. The project features professional-grade TTS engines including [Kokoro TTS](https://huggingface.co/hexgrad/Kokoro-82M) and [Orpheus-TTS](https://github.com/canopyai/Orpheus-TTS) with advanced async parallel processing, offering exceptional audio quality with memory-efficient processing. The project is licensed under the GNU General Public License v3.0 (GPL-3.0), ensuring that it remains free and open for everyone to use, modify, and distribute.
